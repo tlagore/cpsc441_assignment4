@@ -22,6 +22,7 @@ import java.io.*;
  * @version	2.1
  *
  */
+@SuppressWarnings("serial")
 public class DvrPacket implements Serializable {
 	// constants used in the program
     public static final int SERVER = 100;		// network server ID
