@@ -14,39 +14,27 @@ public class Utils {
 		
 	}
 	
-	public static byte[] serialize(Object obj)
+	public static byte[] serialize(Object obj) throws IOException
 	{
 		ByteArrayOutputStream byteOutStream = new ByteArrayOutputStream();
 		ObjectOutputStream objectOutStream;
-		try {
-			objectOutStream = new ObjectOutputStream(byteOutStream);
-			objectOutStream.writeObject(obj);
-		}catch(IOException ex)
-		{
-			System.out.println("Erorr in serialize: " + ex.getMessage());
-		}
-		
+
+		objectOutStream = new ObjectOutputStream(byteOutStream);
+		objectOutStream.writeObject(obj);
+
 		return byteOutStream.toByteArray();
 	}
 	
-	public static Object deserialize(byte[] data, int offset, int length)
+	public static Object deserialize(byte[] data, int offset, int length) throws IOException, ClassNotFoundException
 	{
 		ByteArrayInputStream byteInStream;	
 		ObjectInputStream objectInStream;
 		Object toReturn = null;
-		try{
-			byteInStream = new ByteArrayInputStream(data, offset, length);
-			objectInStream = new ObjectInputStream(byteInStream);
-			
-			toReturn = (Object)objectInStream.readObject();
-		}catch(IOException ex)
-		{
-			ex.printStackTrace();
-			System.out.println("Error in deserialize (IOException): " + ex.getMessage());
-		}catch(ClassNotFoundException ex)
-		{
-			System.err.println("Error in deserialize (ClassNotFoundException): " + ex.getMessage());
-		}
+		
+		byteInStream = new ByteArrayInputStream(data, offset, length);
+		objectInStream = new ObjectInputStream(byteInStream);
+		
+		toReturn = (Object)objectInStream.readObject();
 		
 		return toReturn;
 	}

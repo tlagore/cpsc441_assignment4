@@ -4,6 +4,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.util.Timer;
 
 import cpsc441.a4.shared.DvrPacket;
 import cpsc441.a4.shared.RtnTable;
@@ -34,9 +35,13 @@ public class Router {
 	private int _UpdateInterval;
 	private int _ServerPort;
 	private String _ServerName;
-	private UpdateTimer _UpdateTmer;
+	private Timer _UpdateTimer;
 	private Socket _RelayServerSocket;
 	private RtnTable _RtnTable;
+	
+	private boolean _Quit;
+	private int[] _MinCost;
+	private int[] _NextHop; 
 	private int[][] _DistanceVector;
 
 	/**
@@ -52,15 +57,17 @@ public class Router {
 		_UpdateInterval = updateInterval;
 		_ServerName = serverName;
 		_ServerPort = serverPort;
+		_UpdateTimer = new Timer();
+		_Quit = false;
 	}
 
 	/**
 	 * Called by the UpdateTimer thread to inform the router that the update interval has expired and needs to be 
 	 * rerun.
 	 */
-	public void updateRtnTable()
+	public void broadcastCost()
 	{
-
+		System.out.println("Broadcast!\n");
 	}
 
 	public void tcpHandshake()
@@ -69,7 +76,7 @@ public class Router {
 		//byte[] serializedSendPacket;
 		byte[] serializedReceivePacket = new byte[1000];
 		DvrPacket hello = new DvrPacket(_ID, DvrPacket.SERVER, DvrPacket.HELLO);
-		DvrPacket hi;
+		DvrPacket hi = null;
 		DataInputStream dataInStream;
 		DataOutputStream dataOutputStream;
 		
@@ -83,16 +90,18 @@ public class Router {
 			
 			dataOutputStream.write(Utils.serialize(hello));
 			dataOutputStream.flush();
+			try{
+				Thread.sleep(200);
+			}catch(Exception ex) {}
 			
-			while(dataInStream.available() == 0){}
-			 	
 			amountRead = dataInStream.read(serializedReceivePacket);
-			System.out.println(amountRead);
-			
-			//amountRead = dataInStream.read(serializedReceivePacket);
-			
-			hi = (DvrPacket)Utils.deserialize(serializedReceivePacket, 0, amountRead);
-			
+			try{
+				hi = (DvrPacket)Utils.deserialize(serializedReceivePacket, 0, amountRead);
+			}catch(Exception ex)
+			{
+				System.out.println("Failed to get response 'hello' packet: " + ex.getMessage());
+			}
+
 			processDvr(hi);
 			
 		}catch(IOException ex)
@@ -101,12 +110,16 @@ public class Router {
 		}
 	}	
 	
-	public void processDvr(DvrPacket pkt)
+	public synchronized void processDvr(DvrPacket pkt)
 	{
-		if(pkt.type == DvrPacket.HELLO)
+		if(pkt.sourceid == DvrPacket.SERVER)
+			initTopology(pkt.getMinCost());
+		else
 		{
-			if(pkt.sourceid == DvrPacket.SERVER)
-				initTopology(pkt.getMinCost());
+			if(pkt.type == DvrPacket.HELLO)
+			{
+				
+			}
 		}
 	}
 	
@@ -115,7 +128,10 @@ public class Router {
 		int numRouters = minCost.length;
 		int[] nextHop = new int[numRouters];
 		for(int i = 0; i < numRouters; i++){
-			nextHop[i] = -1;				
+			if(minCost[i] == 999)
+				nextHop[i] = -1;	
+			else
+				nextHop[i] = i;
 		}
 		nextHop[_ID] = _ID;
 		
@@ -124,8 +140,6 @@ public class Router {
 			_DistanceVector[_ID][j] = minCost[j];
 		
 		_DistanceVector[_ID][_ID] = 0;
-		
-		//_RtnTable = new references.RtnTable(pkt.getMinCost(), )
 	}
 
 	/**
@@ -135,9 +149,12 @@ public class Router {
 	 */
 	public RtnTable start() {
 		_RtnTable = new RtnTable();
-
 		tcpHandshake();
-
+		
+		_UpdateTimer.scheduleAtFixedRate(new UpdateTimer(this), 0, _UpdateInterval);
+		
+		while(!_Quit){}
+		
 		return _RtnTable;
 	}
 }

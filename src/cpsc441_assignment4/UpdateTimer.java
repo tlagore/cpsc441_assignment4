@@ -12,6 +12,6 @@ public class UpdateTimer extends TimerTask {
 	
 	public void run()
 	{
-		_Parent.updateRtnTable();
+		_Parent.broadcastCost();
 	}
 }
