@@ -5,14 +5,14 @@ import java.util.*;
 /**
  * Class RtnTable
  * 
- * This is a wrapper class for the forwarding table at roiuters.
+ * This is a wrapper class for the forwarding table at routers.
  * 
  * @author 	Majid Ghaderi
  * @version	1.1
  *
  */
 public class RtnTable {
-	private int[] mincost;	// mincost vector
+	private int[] mincost;		// mincost vector
 	private int[] nexthop;	// next hop vector
 	
 	
@@ -31,7 +31,7 @@ public class RtnTable {
 	 */
 	public RtnTable(int[] mincost, int[] nexthop) {
 		if (mincost.length != nexthop.length)
-			throw new IllegalArgumentException("Arrays have different lengthes");
+			throw new IllegalArgumentException("Arrays have different lengths");
 		
 		this.mincost = Arrays.copyOf(mincost, mincost.length);
 		this.nexthop = Arrays.copyOf(nexthop, nexthop.length);

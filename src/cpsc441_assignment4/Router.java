@@ -1,5 +1,11 @@
 package cpsc441_assignment4;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.net.Socket;
+
+import cpsc441.a4.shared.DvrPacket;
 import cpsc441.a4.shared.RtnTable;
 
 /**
@@ -24,76 +30,114 @@ import cpsc441.a4.shared.RtnTable;
  *
  */
 public class Router {
-	
-    /**
-     * Constructor to initialize the rouer instance 
-     * 
-     * @param routerId			Unique ID of the router starting at 0
-     * @param serverName		Name of the host running the network server
-     * @param serverPort		TCP port number of the network server
-     * @param updateInterval	Time interval for sending routing updates to neighboring routers (in milli-seconds)
-     */
+	private int _ID;
+	private int _UpdateInterval;
+	private int _ServerPort;
+	private String _ServerName;
+	private UpdateTimer _UpdateTmer;
+	private Socket _RelayServerSocket;
+	private RtnTable _RtnTable;
+	private int[][] _DistanceVector;
+
+	/**
+	 * Constructor to initialize the router instance 
+	 * 
+	 * @param routerId			Unique ID of the router starting at 0
+	 * @param serverName		Name of the host running the network server
+	 * @param serverPort		TCP port number of the network server
+	 * @param updateInterval	Time interval for sending routing updates to neighboring routers (in milli-seconds)
+	 */
 	public Router(int routerId, String serverName, int serverPort, int updateInterval) {
-		// to be completed
-	}
-	
-
-    /**
-     * starts the router 
-     * 
-     * @return The forwarding table of the router
-     */
-	public RtnTable start() {
-		// to be completed
-		return new RtnTable();
+		_ID = routerId;
+		_UpdateInterval = updateInterval;
+		_ServerName = serverName;
+		_ServerPort = serverPort;
 	}
 
-	
-	
-    /**
-     * A simple test driver
-     * 
-     */
-	public static void main(String[] args) {
-		// default parameters
-		int routerId = 0;
-		String serverName = "localhost";
-		int serverPort = 2227;
-		int updateInterval = 1000; //milli-seconds
+	/**
+	 * Called by the UpdateTimer thread to inform the router that the update interval has expired and needs to be 
+	 * rerun.
+	 */
+	public void updateRtnTable()
+	{
+
+	}
+
+	public void tcpHandshake()
+	{
+ 		int amountRead;
+		//byte[] serializedSendPacket;
+		byte[] serializedReceivePacket = new byte[1000];
+		DvrPacket hello = new DvrPacket(_ID, DvrPacket.SERVER, DvrPacket.HELLO);
+		DvrPacket hi;
+		DataInputStream dataInStream;
+		DataOutputStream dataOutputStream;
 		
-		// the router can be run with:
-		// i. a single argument: router Id
-		// ii. all required arquiments
-		if (args.length == 1) {
-			routerId = Integer.parseInt(args[0]);
-		}
-		else if (args.length == 4) {
-			routerId = Integer.parseInt(args[0]);
-			serverName = args[1];
-			serverPort = Integer.parseInt(args[2]);
-			updateInterval = Integer.parseInt(args[3]);
-		}
-		else {
-			System.out.println("incorrect usage, try again.");
-			System.exit(0);
-		}
+		try{
+			_RelayServerSocket = new Socket(_ServerName, _ServerPort);
 			
-		// print the parameters
-		System.out.printf("starting Router #%d with parameters:\n", routerId);
-		System.out.printf("Relay server host name: %s\n", serverName);
-		System.out.printf("Relay server port number: %d\n", serverPort);
-		System.out.printf("Routing update intwerval: %d (milli-seconds)\n", updateInterval);
+			dataInStream = new DataInputStream(_RelayServerSocket.getInputStream());
+			dataOutputStream = new DataOutputStream(_RelayServerSocket.getOutputStream());
+			
+			//serializedSendPacket = Utils.serialize(hello);
+			
+			dataOutputStream.write(Utils.serialize(hello));
+			dataOutputStream.flush();
+			
+			while(dataInStream.available() == 0){}
+			 	
+			amountRead = dataInStream.read(serializedReceivePacket);
+			System.out.println(amountRead);
+			
+			//amountRead = dataInStream.read(serializedReceivePacket);
+			
+			hi = (DvrPacket)Utils.deserialize(serializedReceivePacket, 0, amountRead);
+			
+			processDvr(hi);
+			
+		}catch(IOException ex)
+		{
+			System.out.println(ex.getMessage());
+		}
+	}	
+	
+	public void processDvr(DvrPacket pkt)
+	{
+		if(pkt.type == DvrPacket.HELLO)
+		{
+			if(pkt.sourceid == DvrPacket.SERVER)
+				initTopology(pkt.getMinCost());
+		}
+	}
+	
+	private void initTopology(int[] minCost)
+	{
+		int numRouters = minCost.length;
+		int[] nextHop = new int[numRouters];
+		for(int i = 0; i < numRouters; i++){
+			nextHop[i] = -1;				
+		}
+		nextHop[_ID] = _ID;
 		
-		// start the server
-		// the start() method blocks until the router receives a QUIT message
-		Router router = new Router(routerId, serverName, serverPort, updateInterval);
-		RtnTable rtn = router.start();
-		System.out.println("Router terminated normally");
+		_DistanceVector = new int[numRouters][numRouters];
+		for(int j = 0; j < numRouters; j++)
+			_DistanceVector[_ID][j] = minCost[j];
 		
-		// print the computed routing table
-		System.out.println();
-		System.out.println("Routing Table at Router #" + routerId);
-		System.out.print(rtn.toString());
+		_DistanceVector[_ID][_ID] = 0;
+		
+		//_RtnTable = new references.RtnTable(pkt.getMinCost(), )
 	}
 
+	/**
+	 * starts the router 
+	 * 
+	 * @return The forwarding table of the router
+	 */
+	public RtnTable start() {
+		_RtnTable = new RtnTable();
+
+		tcpHandshake();
+
+		return _RtnTable;
+	}
 }
