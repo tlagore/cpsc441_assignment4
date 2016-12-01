@@ -21,4 +21,9 @@ public class ReceiverThread extends Thread{
 			
 		}
 	}
+	
+	public void shutdown()
+	{
+		_Shutdown = true;
+	}
 }

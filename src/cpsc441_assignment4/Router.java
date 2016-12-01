@@ -38,6 +38,7 @@ public class Router {
 	private Timer _UpdateTimer;
 	private Socket _RelayServerSocket;
 	private RtnTable _RtnTable;
+	private ReceiverThread _RcvrThread;
 	
 	private boolean _Quit;
 	private int[] _MinCost;
@@ -67,6 +68,19 @@ public class Router {
 	 */
 	public void broadcastCost()
 	{
+		//System.out.println("----------------");
+		System.out.println(_MinCost.length);
+		
+		for(int i = 0; i < _MinCost.length; i++)
+		{
+			for(int j = 0; j < _MinCost.length; j++)
+				System.out.print(_DistanceVector[i][j] + " ");
+			
+			System.out.println();
+		}
+		
+		System.out.println("----------------");
+			
 		System.out.println("Broadcast!\n");
 	}
 
@@ -87,19 +101,22 @@ public class Router {
 			dataOutputStream = new DataOutputStream(_RelayServerSocket.getOutputStream());
 			
 			//serializedSendPacket = Utils.serialize(hello);
-			
-			dataOutputStream.write(Utils.serialize(hello));
-			dataOutputStream.flush();
-			try{
-				Thread.sleep(200);
-			}catch(Exception ex) {}
-			
-			amountRead = dataInStream.read(serializedReceivePacket);
-			try{
-				hi = (DvrPacket)Utils.deserialize(serializedReceivePacket, 0, amountRead);
-			}catch(Exception ex)
+		
+			while(hi == null)
 			{
-				System.out.println("Failed to get response 'hello' packet: " + ex.getMessage());
+				dataOutputStream.write(Utils.serialize(hello));
+				dataOutputStream.flush();
+				
+				try{
+					Thread.sleep(500);
+					
+					amountRead = dataInStream.read(serializedReceivePacket);
+					
+					hi = (DvrPacket)Utils.deserialize(serializedReceivePacket, 0, amountRead);
+				}catch(Exception ex)
+				{
+					System.out.println("Failed to get response 'hello' packet: " + ex.getMessage());		
+				}
 			}
 
 			processDvr(hi);
@@ -113,12 +130,24 @@ public class Router {
 	public synchronized void processDvr(DvrPacket pkt)
 	{
 		if(pkt.sourceid == DvrPacket.SERVER)
-			initTopology(pkt.getMinCost());
+		{
+			switch(pkt.type)
+			{
+				case DvrPacket.HELLO:
+					initTopology(pkt.getMinCost());
+					break;
+				case DvrPacket.QUIT:
+					if(_RcvrThread != null)
+						_RcvrThread.shutdown();
+					_Quit = true;
+					break;
+			}
+		}
 		else
 		{
-			if(pkt.type == DvrPacket.HELLO)
+			if(pkt.type == DvrPacket.ROUTE)
 			{
-				
+				_DistanceVector[pkt.sourceid] = pkt.getMinCost();
 			}
 		}
 	}
@@ -126,20 +155,22 @@ public class Router {
 	private void initTopology(int[] minCost)
 	{
 		int numRouters = minCost.length;
-		int[] nextHop = new int[numRouters];
+		_NextHop = new int[numRouters];
+		_DistanceVector = new int[numRouters][numRouters];
+		
+		_MinCost = minCost;
+		
+		_NextHop[_ID] = _ID;		
+		_DistanceVector[_ID]= minCost;
+		_DistanceVector[_ID][_ID] = 0;
+		 
 		for(int i = 0; i < numRouters; i++){
 			if(minCost[i] == 999)
-				nextHop[i] = -1;	
+				_NextHop[i] = -1;	
 			else
-				nextHop[i] = i;
+				_NextHop[i] = i;
 		}
-		nextHop[_ID] = _ID;
 		
-		_DistanceVector = new int[numRouters][numRouters];
-		for(int j = 0; j < numRouters; j++)
-			_DistanceVector[_ID][j] = minCost[j];
-		
-		_DistanceVector[_ID][_ID] = 0;
 	}
 
 	/**
@@ -151,7 +182,8 @@ public class Router {
 		_RtnTable = new RtnTable();
 		tcpHandshake();
 		
-		_UpdateTimer.scheduleAtFixedRate(new UpdateTimer(this), 0, _UpdateInterval);
+		_RcvrThread = new ReceiverThread(this, _RelayServerSocket);
+		_UpdateTimer.scheduleAtFixedRate(new UpdateTimer(this), 1000, _UpdateInterval);
 		
 		while(!_Quit){}
 		
