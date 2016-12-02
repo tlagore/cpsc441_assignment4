@@ -133,9 +133,7 @@ public class Router {
 	 * @param pkt
 	 */
 	public synchronized void processDvr(DvrPacket pkt)
-	{
-		int numRouters;
-		
+	{	
 		if(pkt.sourceid == DvrPacket.SERVER)
 		{
 			switch(pkt.type)
@@ -154,9 +152,8 @@ public class Router {
 		{
 			if(pkt.type == DvrPacket.ROUTE)
 			{
-				numRouters = pkt.getMinCost().length;
 				_DistanceVector[pkt.sourceid] = pkt.getMinCost();
-
+				computeLinkState();
 			}
 		}
 	}
@@ -212,29 +209,95 @@ public class Router {
 			if(i != _ID)
 			{
 				for(int j = 0; j < numRouters; j++){
-					min = Math.min(_MinCost[j] + _DistanceVector[j][i], min);
+					if(j != _ID){
+						//int value = _MinCost[j] + _DistanceVector[j][i];
+						if (_MinCost[j] + _DistanceVector[j][i] < _MinCost[i])
+							_NextHop[i] = _NextHop[j];
+	
+						min = Math.min(_MinCost[j] + _DistanceVector[j][i], min);
+					}
 				}
 				if(min < _MinCost[i]){
 					_MinCost[i] = min;
 					_DistanceVector[_ID][i] = min;
 				}
+
+				min = DvrPacket.INFINITY;
 			}
 		}
 	}
+	
+	private void displayRouterInfo()
+	{
+		int i, j;
+		System.out.println("----------------------------");
+		
+		System.out.println("MinCost");
+		for(i = 0; i < _MinCost.length; i++)
+			System.out.print(_MinCost[i]);
+		
+		System.out.println();
+		System.out.println("NextHop");
+		for(i = 0; i < _NextHop.length; i++)
+			System.out.print(_NextHop[i]);
+		
+		System.out.println();
+		System.out.println("DistanceVector");
+		for(i = 0; i < _DistanceVector[0].length; i++)
+		{
+			for(j = 0; j < _DistanceVector[0].length; j++)
+				System.out.print(_DistanceVector[i][j] + "\t");
+			
+			System.out.println();
+		}
+		
+		System.out.println("----------------------------");
+	}
 
+	public void testRouter(DvrPacket[] pckts)
+	{
+		for (int i = 0; i < pckts.length; i++)
+		{
+			processDvr(pckts[i]);
+			displayRouterInfo();
+			try{
+				
+				Thread.sleep(5000);
+			}catch(Exception ex)
+			{
+				
+			}
+		}
+	}
 	/**
 	 * starts the router 
 	 * 
 	 * @return The forwarding table of the router
 	 */
 	public RtnTable start() {
-		_RtnTable = new RtnTable();
-		tcpHandshake();
+		//_RtnTable = new RtnTable();
+		//tcpHandshake();
 		
-		_RcvrThread = new ReceiverThread(this, _RelayServerSocket);
-		_UpdateTimer.scheduleAtFixedRate(new UpdateTimer(this), 1000, _UpdateInterval);
+		int[] R0 = new int[]{0, 1, 7, 999};
+		int[] R1 = new int[]{1, 0, 1, 999};
+		int[] R2 = new int[]{7, 1, 0, 1 };
+		int[] R3 = new int[]{999, 999, 1, 0};
 		
-		while(!_Quit){}
+		
+		DvrPacket pckt0 = new DvrPacket(DvrPacket.SERVER, 0, DvrPacket.HELLO, R0);
+		DvrPacket pckt1 = new DvrPacket(1, 0, DvrPacket.ROUTE, R1);
+		DvrPacket pckt2 = new DvrPacket(2, 0, DvrPacket.ROUTE, R2);
+		DvrPacket pckt3 = new DvrPacket(3, 0, DvrPacket.ROUTE, R3);
+		
+		DvrPacket[] pckts = new DvrPacket[]{pckt0, pckt1, pckt2, pckt3};
+
+		testRouter(pckts);
+		
+		//_RcvrThread = new ReceiverThread(this, _RelayServerSocket);
+		//_UpdateTimer.scheduleAtFixedRate(new UpdateTimer(this), 1000, _UpdateInterval);
+		
+		
+		//while(!_Quit){}
 		
 		return _RtnTable;
 	}
