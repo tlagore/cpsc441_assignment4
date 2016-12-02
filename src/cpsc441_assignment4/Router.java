@@ -38,7 +38,6 @@ public class Router {
 	private String _ServerName;
 	private Timer _UpdateTimer;
 	private Socket _RelayServerSocket;
-	private RtnTable _RtnTable;
 	private ReceiverThread _RcvrThread;
 	
 	private boolean _Quit;
@@ -227,6 +226,37 @@ public class Router {
 		}
 	}
 	
+	/**
+	 * starts the router 
+	 * 
+	 * @return The forwarding table of the router
+	 */
+	public RtnTable start() {
+		RtnTable rtnTable;
+		
+		tcpHandshake();
+		
+		_RcvrThread = new ReceiverThread(this, _RelayServerSocket);
+		_UpdateTimer.scheduleAtFixedRate(new UpdateTimer(this), 1000, _UpdateInterval);
+		
+		_RcvrThread.start();
+		
+		while(!_Quit){}
+		
+		rtnTable = new RtnTable(_MinCost, _NextHop);
+		return rtnTable;
+	}
+	
+	
+	/* **********************************************************************************
+	 * 																					*
+	 * 								Test Functions										*
+	 * 																					*
+	 * **********************************************************************************/
+	
+	/**
+	 * 
+	 */
 	private void displayRouterInfo()
 	{
 		int i, j;
@@ -265,19 +295,14 @@ public class Router {
 				Thread.sleep(5000);
 			}catch(Exception ex)
 			{
-				
+				System.out.println("Error in testRouter");
 			}
 		}
 	}
-	/**
-	 * starts the router 
-	 * 
-	 * @return The forwarding table of the router
-	 */
-	public RtnTable start() {
-		//_RtnTable = new RtnTable();
-		//tcpHandshake();
-		
+	
+	@SuppressWarnings("unused")
+	private void test1()
+	{
 		int[] R0 = new int[]{0, 1, 7, 999};
 		int[] R1 = new int[]{1, 0, 1, 999};
 		int[] R2 = new int[]{7, 1, 0, 1 };
@@ -292,13 +317,5 @@ public class Router {
 		DvrPacket[] pckts = new DvrPacket[]{pckt0, pckt1, pckt2, pckt3};
 
 		testRouter(pckts);
-		
-		//_RcvrThread = new ReceiverThread(this, _RelayServerSocket);
-		//_UpdateTimer.scheduleAtFixedRate(new UpdateTimer(this), 1000, _UpdateInterval);
-		
-		
-		//while(!_Quit){}
-		
-		return _RtnTable;
 	}
 }
