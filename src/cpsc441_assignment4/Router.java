@@ -4,6 +4,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.Timer;
 
 import cpsc441.a4.shared.DvrPacket;
@@ -127,8 +128,14 @@ public class Router {
 		}
 	}	
 	
+	/**
+	 * 
+	 * @param pkt
+	 */
 	public synchronized void processDvr(DvrPacket pkt)
 	{
+		int numRouters;
+		
 		if(pkt.sourceid == DvrPacket.SERVER)
 		{
 			switch(pkt.type)
@@ -147,11 +154,33 @@ public class Router {
 		{
 			if(pkt.type == DvrPacket.ROUTE)
 			{
+				numRouters = pkt.getMinCost().length;
 				_DistanceVector[pkt.sourceid] = pkt.getMinCost();
+
 			}
 		}
 	}
 	
+	/**
+	 * 
+	 * @param numRouters
+	 */
+	private void initDistanceVector(int numRouters)
+	{
+		_DistanceVector = new int[numRouters][numRouters];
+		for(int i = 0; i < numRouters; i++)
+		{
+			for(int j = 0; j < numRouters; j++)
+				_DistanceVector[i][j] = DvrPacket.INFINITY;
+		}
+		
+		_DistanceVector[_ID][_ID] = 0;
+	}
+	
+	/**
+	 * 
+	 * @param minCost
+	 */
 	private void initTopology(int[] minCost)
 	{
 		int numRouters = minCost.length;
@@ -161,16 +190,36 @@ public class Router {
 		_MinCost = minCost;
 		
 		_NextHop[_ID] = _ID;		
-		_DistanceVector[_ID]= minCost;
-		_DistanceVector[_ID][_ID] = 0;
-		 
+		
+		initDistanceVector(numRouters);
+		_DistanceVector[_ID] = minCost;
+		
 		for(int i = 0; i < numRouters; i++){
 			if(minCost[i] == 999)
 				_NextHop[i] = -1;	
 			else
 				_NextHop[i] = i;
 		}
+	}
+	
+	private void computeLinkState()
+	{
+		int numRouters = _MinCost.length;
+		int min = DvrPacket.INFINITY;
 		
+		for(int i = 0; i < numRouters; i++)
+		{
+			if(i != _ID)
+			{
+				for(int j = 0; j < numRouters; j++){
+					min = Math.min(_MinCost[j] + _DistanceVector[j][i], min);
+				}
+				if(min < _MinCost[i]){
+					_MinCost[i] = min;
+					_DistanceVector[_ID][i] = min;
+				}
+			}
+		}
 	}
 
 	/**
