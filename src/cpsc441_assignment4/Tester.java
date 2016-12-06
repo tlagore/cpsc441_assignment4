@@ -1,5 +1,6 @@
 package cpsc441_assignment4;
 
+import cpsc441.a4.shared.DvrPacket;
 import cpsc441.a4.shared.RtnTable;
 
 public class Tester {		
@@ -29,7 +30,7 @@ public class Tester {
 			else {
 				System.out.println("incorrect usage, try again.");
 				System.exit(0);
-			}
+			}		
 				
 			// print the parameters
 			System.out.printf("starting Router #%d with parameters:\n", routerId);

@@ -40,6 +40,8 @@ public class Router {
 	private Socket _RelayServerSocket;
 	private RtnTable _RtnTable;
 	private ReceiverThread _RcvrThread;
+	private DataOutputStream _OutputStream;
+	private DataInputStream _InputStream;
 	
 	private boolean _Quit;
 	private int[] _MinCost;
@@ -67,51 +69,52 @@ public class Router {
 	 * Called by the UpdateTimer thread to inform the router that the update interval has expired and needs to be 
 	 * rerun.
 	 */
-	public void broadcastCost()
+	public synchronized void broadcastCost()
 	{
-		//System.out.println("----------------");
-		System.out.println(_MinCost.length);
+		DvrPacket packet;
+		byte[] serializedPacket;
 		
 		for(int i = 0; i < _MinCost.length; i++)
 		{
-			for(int j = 0; j < _MinCost.length; j++)
-				System.out.print(_DistanceVector[i][j] + " ");
-			
-			System.out.println();
+			if(i != _ID)
+			{
+				packet = new DvrPacket(_ID, i, DvrPacket.ROUTE, _MinCost);
+				try{
+					serializedPacket = Utils.serialize(packet);
+					packet = (DvrPacket)Utils.deserialize(serializedPacket, 0, serializedPacket.length);
+					_OutputStream.write(serializedPacket);
+				}catch(Exception ex)
+				{
+					System.out.println("Failed to send MinCost packet to router " + i + ". Exception message: " + ex.getMessage());
+				}
+			}
 		}
 		
-		System.out.println("----------------");
-			
-		System.out.println("Broadcast!\n");
+		System.out.println("Broadcast!");
 	}
 
 	public void tcpHandshake()
 	{
  		int amountRead;
-		//byte[] serializedSendPacket;
 		byte[] serializedReceivePacket = new byte[1000];
 		DvrPacket hello = new DvrPacket(_ID, DvrPacket.SERVER, DvrPacket.HELLO);
 		DvrPacket hi = null;
-		DataInputStream dataInStream;
-		DataOutputStream dataOutputStream;
 		
 		try{
 			_RelayServerSocket = new Socket(_ServerName, _ServerPort);
 			
-			dataInStream = new DataInputStream(_RelayServerSocket.getInputStream());
-			dataOutputStream = new DataOutputStream(_RelayServerSocket.getOutputStream());
-			
-			//serializedSendPacket = Utils.serialize(hello);
+			_InputStream = new DataInputStream(_RelayServerSocket.getInputStream());
+			_OutputStream = new DataOutputStream(_RelayServerSocket.getOutputStream());
 		
 			while(hi == null)
 			{
-				dataOutputStream.write(Utils.serialize(hello));
-				dataOutputStream.flush();
+				_OutputStream.write(Utils.serialize(hello));
+				_OutputStream.flush();
 				
 				try{
 					Thread.sleep(500);
 					
-					amountRead = dataInStream.read(serializedReceivePacket);
+					amountRead = _InputStream.read(serializedReceivePacket);
 					
 					hi = (DvrPacket)Utils.deserialize(serializedReceivePacket, 0, amountRead);
 				}catch(Exception ex)
@@ -122,11 +125,21 @@ public class Router {
 
 			processDvr(hi);
 			
+			_OutputStream.write(Utils.serialize(new DvrPacket(0, 1, DvrPacket.ROUTE, _MinCost)));
+			_OutputStream.flush();
 		}catch(IOException ex)
 		{
 			System.out.println(ex.getMessage());
 		}
 	}	
+	
+	
+	public synchronized void abnormalShutdown()
+	{
+		_Quit = true;
+		_UpdateTimer.cancel();
+		System.out.println("Abnormal shutdown initialized. Router shutting down.");
+	}
 	
 	/**
 	 * 
@@ -227,6 +240,52 @@ public class Router {
 		}
 	}
 	
+
+	/**
+	 * starts the router 
+	 * 
+	 * @return The forwarding table of the router
+	 */
+	public RtnTable start() {
+		tcpHandshake();
+	
+		_RcvrThread = new ReceiverThread(this, _InputStream);
+		_RcvrThread.start();
+		
+		_UpdateTimer.scheduleAtFixedRate(new UpdateTimer(this), 1000, _UpdateInterval);
+	
+		while(!_Quit){
+			Thread.yield();
+		}
+		
+		displayRouterInfo();
+		_RtnTable = new RtnTable(_MinCost, _NextHop);
+		return _RtnTable;
+	}
+	
+	/* *************************************************
+	 * 							TESTER FUNCTIONS					*
+	 */
+	
+	@SuppressWarnings("unused")
+	private void testRouterConfig1()
+	{	
+		int[] R0 = new int[]{0, 1, 7, 999};
+		int[] R1 = new int[]{1, 0, 1, 999};
+		int[] R2 = new int[]{7, 1, 0, 1 };
+		int[] R3 = new int[]{999, 999, 1, 0};
+		
+		
+		DvrPacket pckt0 = new DvrPacket(DvrPacket.SERVER, 0, DvrPacket.HELLO, R0);
+		DvrPacket pckt1 = new DvrPacket(1, 0, DvrPacket.ROUTE, R1);
+		DvrPacket pckt2 = new DvrPacket(2, 0, DvrPacket.ROUTE, R2);
+		DvrPacket pckt3 = new DvrPacket(3, 0, DvrPacket.ROUTE, R3);
+		
+		DvrPacket[] pckts = new DvrPacket[]{pckt0, pckt1, pckt2, pckt3};
+
+		testRouter(pckts);
+	}
+	
 	private void displayRouterInfo()
 	{
 		int i, j;
@@ -234,12 +293,12 @@ public class Router {
 		
 		System.out.println("MinCost");
 		for(i = 0; i < _MinCost.length; i++)
-			System.out.print(_MinCost[i]);
+			System.out.print(_MinCost[i] + ", ");
 		
 		System.out.println();
 		System.out.println("NextHop");
 		for(i = 0; i < _NextHop.length; i++)
-			System.out.print(_NextHop[i]);
+			System.out.print(_NextHop[i] + ", ");
 		
 		System.out.println();
 		System.out.println("DistanceVector");
@@ -268,37 +327,5 @@ public class Router {
 				
 			}
 		}
-	}
-	/**
-	 * starts the router 
-	 * 
-	 * @return The forwarding table of the router
-	 */
-	public RtnTable start() {
-		//_RtnTable = new RtnTable();
-		//tcpHandshake();
-		
-		int[] R0 = new int[]{0, 1, 7, 999};
-		int[] R1 = new int[]{1, 0, 1, 999};
-		int[] R2 = new int[]{7, 1, 0, 1 };
-		int[] R3 = new int[]{999, 999, 1, 0};
-		
-		
-		DvrPacket pckt0 = new DvrPacket(DvrPacket.SERVER, 0, DvrPacket.HELLO, R0);
-		DvrPacket pckt1 = new DvrPacket(1, 0, DvrPacket.ROUTE, R1);
-		DvrPacket pckt2 = new DvrPacket(2, 0, DvrPacket.ROUTE, R2);
-		DvrPacket pckt3 = new DvrPacket(3, 0, DvrPacket.ROUTE, R3);
-		
-		DvrPacket[] pckts = new DvrPacket[]{pckt0, pckt1, pckt2, pckt3};
-
-		testRouter(pckts);
-		
-		//_RcvrThread = new ReceiverThread(this, _RelayServerSocket);
-		//_UpdateTimer.scheduleAtFixedRate(new UpdateTimer(this), 1000, _UpdateInterval);
-		
-		
-		//while(!_Quit){}
-		
-		return _RtnTable;
 	}
 }
