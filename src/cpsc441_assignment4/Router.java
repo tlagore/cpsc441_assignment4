@@ -3,8 +3,9 @@ package cpsc441_assignment4;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.Timer;
 
 import cpsc441.a4.shared.DvrPacket;
@@ -39,8 +40,8 @@ public class Router {
 	private Timer _UpdateTimer;
 	private Socket _RelayServerSocket;
 	private ReceiverThread _RcvrThread;
-	private DataOutputStream _OutputStream;
-	private DataInputStream _InputStream;
+	private ObjectOutputStream _OutputStream;
+	private ObjectInputStream _InputStream;
 	
 	private boolean _Quit;
 	private int[] _MinCost;
@@ -71,7 +72,6 @@ public class Router {
 	public synchronized void broadcastCost()
 	{
 		DvrPacket packet;
-		byte[] serializedPacket;
 		
 		for(int i = 0; i < _MinCost.length; i++)
 		{
@@ -79,9 +79,8 @@ public class Router {
 			{
 				packet = new DvrPacket(_ID, i, DvrPacket.ROUTE, _MinCost);
 				try{
-					serializedPacket = Utils.serialize(packet);
-					packet = (DvrPacket)Utils.deserialize(serializedPacket, 0, serializedPacket.length);
-					_OutputStream.write(serializedPacket);
+					_OutputStream.writeObject(packet);
+					_OutputStream.flush();
 				}catch(Exception ex)
 				{
 					System.out.println("Failed to send MinCost packet to router " + i + ". Exception message: " + ex.getMessage());
@@ -94,28 +93,21 @@ public class Router {
 
 	public void tcpHandshake()
 	{
- 		int amountRead;
-		byte[] serializedReceivePacket = new byte[1000];
 		DvrPacket hello = new DvrPacket(_ID, DvrPacket.SERVER, DvrPacket.HELLO);
 		DvrPacket hi = null;
 		
 		try{
 			_RelayServerSocket = new Socket(_ServerName, _ServerPort);
-			
-			_InputStream = new DataInputStream(_RelayServerSocket.getInputStream());
-			_OutputStream = new DataOutputStream(_RelayServerSocket.getOutputStream());
+			_OutputStream = new ObjectOutputStream(_RelayServerSocket.getOutputStream());
+			_InputStream = new ObjectInputStream(_RelayServerSocket.getInputStream());
 		
 			while(hi == null)
 			{
-				_OutputStream.write(Utils.serialize(hello));
+				_OutputStream.writeObject(hello);
 				_OutputStream.flush();
 				
-				try{
-					Thread.sleep(500);
-					
-					amountRead = _InputStream.read(serializedReceivePacket);
-					
-					hi = (DvrPacket)Utils.deserialize(serializedReceivePacket, 0, amountRead);
+				try{					
+					hi = (DvrPacket)_InputStream.readObject();
 				}catch(Exception ex)
 				{
 					System.out.println("Failed to get response 'hello' packet: " + ex.getMessage());		
@@ -124,8 +116,6 @@ public class Router {
 
 			processDvr(hi);
 			
-			_OutputStream.write(Utils.serialize(new DvrPacket(0, 1, DvrPacket.ROUTE, _MinCost)));
-			_OutputStream.flush();
 		}catch(IOException ex)
 		{
 			System.out.println(ex.getMessage());

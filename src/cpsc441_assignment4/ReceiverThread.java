@@ -1,20 +1,19 @@
 package cpsc441_assignment4;
 
 import java.io.DataInputStream;
-import java.io.IOException;
-import java.net.Socket;
+import java.io.ObjectInputStream;
 
 import cpsc441.a4.shared.DvrPacket;
 
 public class ReceiverThread extends Thread{
 	private Router _Parent;
-	private DataInputStream _DataInputStream;
+	private ObjectInputStream _InputStream;
 	private boolean _Shutdown;
 	
-	public ReceiverThread(Router parent, DataInputStream dis)
+	public ReceiverThread(Router parent, ObjectInputStream ois)
 	{
 		_Parent = parent;
-		_DataInputStream = dis;
+		_InputStream = ois;
 		_Shutdown = false;
 		
 	}
@@ -22,17 +21,13 @@ public class ReceiverThread extends Thread{
 	public void run()
 	{
 		int amountRead = 0;
-		DataInputStream dataInStream;
-		byte[] serializedReceivePacket = new byte[1000];
 		DvrPacket packet;
 
 		System.out.println("ReceiverThread initialized, beginning read spin.");
 		while(!this.isInterrupted() && !_Shutdown)
 		{
 			try{
-				amountRead = _DataInputStream.read(serializedReceivePacket);
-				packet = (DvrPacket)Utils.deserialize(serializedReceivePacket, 0, amountRead);
-				System.out.println(packet.toString());
+				packet = (DvrPacket)_InputStream.readObject();
 				_Parent.processDvr(packet);
 			}catch(Exception ex)
 			{
