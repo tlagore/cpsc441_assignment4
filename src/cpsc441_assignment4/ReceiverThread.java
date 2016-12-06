@@ -27,8 +27,7 @@ public class ReceiverThread extends Thread{
 		DvrPacket packet;
 
 		System.out.println("ReceiverThread initialized, beginning read spin.");
-		//if amount read = -1 then dataInStream is closed because socket is closed.
-		while(!this.isInterrupted() && !_Shutdown && amountRead != -1)
+		while(!this.isInterrupted() && !_Shutdown)
 		{
 			try{
 				amountRead = _DataInputStream.read(serializedReceivePacket);
@@ -44,7 +43,7 @@ public class ReceiverThread extends Thread{
 				//tell parent we shutdown abnormally
 				_Parent.abnormalShutdown();
 			}
-		}
+		}		
 	}
 	
 	public void shutdown()
