@@ -1,11 +1,10 @@
 package cpsc441_assignment4;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
+import java.util.Arrays;
 import java.util.Timer;
 
 import cpsc441.a4.shared.DvrPacket;
@@ -28,8 +27,8 @@ import cpsc441.a4.shared.RtnTable;
  * to directly connected neighbors at regular intervals.
  * 
  *      
- * @author 	Majid Ghaderi
- * @version	2.1
+ * @author Tyrone Lagore
+ * @version	2.2
  *
  */
 public class Router {
@@ -44,7 +43,7 @@ public class Router {
 	private ObjectInputStream _InputStream;
 	
 	private boolean _Quit;
-	private int[] _MinCost;
+	private int[] _LinkCost;
 	private int[] _NextHop; 
 	private int[][] _DistanceVector;
 
@@ -73,11 +72,11 @@ public class Router {
 	{
 		DvrPacket packet;
 		
-		for(int i = 0; i < _MinCost.length; i++)
+		for(int i = 0; i < _NextHop.length; i++)
 		{
-			if(i != _ID)
+			if(i != _ID && _LinkCost[i] != 999)
 			{
-				packet = new DvrPacket(_ID, i, DvrPacket.ROUTE, _MinCost);
+				packet = new DvrPacket(_ID, i, DvrPacket.ROUTE, _LinkCost);
 				try{
 					_OutputStream.writeObject(packet);
 					_OutputStream.flush();
@@ -87,10 +86,11 @@ public class Router {
 				}
 			}
 		}
-		
-		System.out.println("Broadcast!");
 	}
 
+	/**
+	 * 
+	 */
 	public void tcpHandshake()
 	{
 		DvrPacket hello = new DvrPacket(_ID, DvrPacket.SERVER, DvrPacket.HELLO);
@@ -122,7 +122,12 @@ public class Router {
 		}
 	}	
 	
-	
+	/**
+	 * abnormalShutdown allows the router to know if a thread has malfunctioned. In the case of this router
+	 * implementation, the router will simply shutdown. If the router was to be of a more sophisticated design,
+	 * the function might take in some parameters to find out where the error occurred and attempt to remedy
+	 * the issue.
+	 */
 	public synchronized void abnormalShutdown()
 	{
 		_Quit = true;
@@ -130,9 +135,26 @@ public class Router {
 		System.out.println("Abnormal shutdown initialized. Router shutting down.");
 	}
 	
+	
 	/**
+	 * updateTopology cancels the current broadcast timer, updates the topology using initTopology, then 
+	 * begins the broadcast timer again.
+	 * @param min
+	 */
+	private void updateTopology(int [] min)
+	{
+		_UpdateTimer.cancel();
+		_UpdateTimer = new Timer();
+		
+		initTopology(min);
+		_UpdateTimer.scheduleAtFixedRate(new UpdateTimer(this), 1000, _UpdateInterval);
+	}
+	
+	/**
+	 * processDvr handles all received Dvrs. Based on the packet received, the router will either initialize it's
+	 * topology, update its topology, calculate new minimum distances, or quit (which handles cleanup).
 	 * 
-	 * @param pkt
+	 * @param pkt the packet to be processed
 	 */
 	public synchronized void processDvr(DvrPacket pkt)
 	{	
@@ -143,10 +165,16 @@ public class Router {
 				case DvrPacket.HELLO:
 					initTopology(pkt.getMinCost());
 					break;
+				case DvrPacket.ROUTE:
+					updateTopology(pkt.getMinCost());
+					break;
 				case DvrPacket.QUIT:
 					if(_RcvrThread != null)
 						_RcvrThread.shutdown();
+					
+					_UpdateTimer.cancel();
 					_Quit = true;
+					System.out.println("Quit!");
 					break;
 			}
 		}
@@ -161,8 +189,10 @@ public class Router {
 	}
 	
 	/**
+	 * initDistanceVecotr is an internal initialization method that initializes a default Distance Vector with all
+	 * values set to infinity, and a value of 0 from the router to itself. Minimum distances should be set after this call.
 	 * 
-	 * @param numRouters
+	 * @param numRouters The number of routers in the network topology
 	 */
 	private void initDistanceVector(int numRouters)
 	{
@@ -177,21 +207,23 @@ public class Router {
 	}
 	
 	/**
+	 * initTopology initializes a new network topology based on the routers minimum cost to all routers on the network
+	 * (infinity if not directly linked).
 	 * 
-	 * @param minCost
+	 * @param minCost The minimum cost of this router to all of the routers in the network (infinity if not a neighbour)
 	 */
-	private void initTopology(int[] minCost)
+	private synchronized void initTopology(int[] minCost)
 	{
 		int numRouters = minCost.length;
 		_NextHop = new int[numRouters];
 		_DistanceVector = new int[numRouters][numRouters];
 		
-		_MinCost = minCost;
+		_LinkCost = Arrays.copyOf(minCost, minCost.length);
 		
 		_NextHop[_ID] = _ID;		
 		
 		initDistanceVector(numRouters);
-		_DistanceVector[_ID] = minCost;
+		_DistanceVector[_ID] = Arrays.copyOf(minCost, minCost.length);
 		
 		for(int i = 0; i < numRouters; i++){
 			if(minCost[i] == 999)
@@ -201,9 +233,15 @@ public class Router {
 		}
 	}
 	
+	/**
+	 * computeLinkState implements the Bellman Ford link state algorithm to create a distance vector that 
+	 * is the minimum cost for each router to each router within the network based on the cost of it's 
+	 * neighboring routers to other routers within the network.
+	 * 
+	 */
 	private void computeLinkState()
 	{
-		int numRouters = _MinCost.length;
+		int numRouters = _LinkCost.length;
 		int min = DvrPacket.INFINITY;
 		
 		for(int i = 0; i < numRouters; i++)
@@ -212,15 +250,12 @@ public class Router {
 			{
 				for(int j = 0; j < numRouters; j++){
 					if(j != _ID){
-						//int value = _MinCost[j] + _DistanceVector[j][i];
-						if (_MinCost[j] + _DistanceVector[j][i] < _MinCost[i])
+						if (_DistanceVector[_ID][j] + _DistanceVector[j][i] < _DistanceVector[_ID][i])
 							_NextHop[i] = _NextHop[j];
-	
-						min = Math.min(_MinCost[j] + _DistanceVector[j][i], min);
+						min = Math.min(_DistanceVector[_ID][j] + _DistanceVector[j][i], min);
 					}
 				}
-				if(min < _MinCost[i]){
-					_MinCost[i] = min;
+				if(min < _DistanceVector[_ID][i]){
 					_DistanceVector[_ID][i] = min;
 				}
 
@@ -244,26 +279,28 @@ public class Router {
 		
 		_RcvrThread.start();
 		
-		while(!_Quit){}
+		while(!_Quit){
+			Thread.yield();
+		}
 		
-		rtnTable = new RtnTable(_MinCost, _NextHop);
+		rtnTable = new RtnTable(_DistanceVector[_ID], _NextHop);
 		return rtnTable;
 	}
 	
 	
-	/* **********************************************************************************
-	 * 																					*
-	 * 								Test Functions										*
-	 * 																					*
-	 * **********************************************************************************/
+	/* *********************************************************************************
+	 * 														Test Functions														*
+	 * *********************************************************************************/
 	private void displayRouterInfo()
 	{
 		int i, j;
+		
+		System.out.println("Router with ID " + _ID);
 		System.out.println("----------------------------");
 		
-		System.out.println("MinCost");
-		for(i = 0; i < _MinCost.length; i++)
-			System.out.print(_MinCost[i] + ", ");
+		System.out.println("LinkCost");
+		for(i = 0; i < _LinkCost.length; i++)
+			System.out.print(_LinkCost[i] + ", ");
 		
 		System.out.println();
 		System.out.println("NextHop");

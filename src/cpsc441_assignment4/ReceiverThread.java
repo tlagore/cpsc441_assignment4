@@ -1,6 +1,5 @@
 package cpsc441_assignment4;
 
-import java.io.DataInputStream;
 import java.io.ObjectInputStream;
 
 import cpsc441.a4.shared.DvrPacket;
